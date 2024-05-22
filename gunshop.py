@@ -171,7 +171,7 @@ class MarketGUI(tk.Toplevel):
         quantity_entry.pack(side=tk.RIGHT, padx=5)
 
     def book(self):
-        order_details = "Pesanan Anda:\n"
+        order_details = "Nota:\n"
         total_cost = 0
         for weapon_name, quantity_var in self.weapon_quantities.items():
             quantity = quantity_var.get()
@@ -185,8 +185,29 @@ class MarketGUI(tk.Toplevel):
                     self.custom_messagebox("Error", f"Stok tidak cukup untuk {weapon_name}.", "error")
                     return
         order_details += f"\nTotal Biaya: {total_cost} IDR"
-        order_details += "hubungin nomor berikut untuk verifikasi dan alamat email"
-        self.custom_messagebox("Detail Pesanan", order_details)
+        order_details += "\nHubungi nomor telepon berikut untuk konfirmasi: 081234567890"
+
+        receipt_window = tk.Toplevel(self)
+        receipt_window.title("Nota")
+        receipt_window.geometry("400x400")
+        receipt_window.configure(bg='black')
+
+        receipt_label = tk.Label(receipt_window, text=order_details, fg='green', bg='black', font=("Helvetica", 10))
+        receipt_label.pack(pady=10)
+
+        ok_button = tk.Button(receipt_window, text="OK", command=receipt_window.destroy, fg='green', bg='black', font=("Helvetica", 10))
+        ok_button.pack(pady=10)
+
+        self.center_window(receipt_window)
+
+    def center_window(self, window):
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        width = 400
+        height = 300
+        x = (screen_width/2) - (width/2)
+        y = (screen_height/2) - (height/2)
+        window.geometry(f'{width}x{height}+{int(x)}+{int(y)}')
 
     def custom_messagebox(self, title: str, message: str, type: str = "info"):
         root = tk.Tk()
