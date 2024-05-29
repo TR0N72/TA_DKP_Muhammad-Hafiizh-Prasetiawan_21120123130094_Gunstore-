@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, StringVar, IntVar, simpledialog
 from tkinter import ttk
+import pygame
 
 class Weapon:
     def __init__(self, name: str, stock: int, price: int):
@@ -272,6 +273,10 @@ class GUI(tk.Tk):
             Weapon("Ruger 10/22", 99, 120000000),
             Weapon("FN Scar 17S", 200, 260000000)
         ]
+
+        pygame.init()
+        pygame.mixer.music.load("pump up kicks.mp3")
+        pygame.mixer.music.play(-1)
 
     def login(self):
         email = self.email_entry.get()
