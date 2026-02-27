@@ -2,6 +2,17 @@ import tkinter as tk
 from tkinter import messagebox, StringVar, IntVar, simpledialog
 from tkinter import ttk
 import pygame
+import os
+
+
+# --- Shared Utility ---
+def custom_messagebox(title: str, message: str, msg_type: str = "info"):
+    """Shared messagebox utility. Uses the existing Tk root instead of creating a new one."""
+    if msg_type == "error":
+        messagebox.showerror(title, message)
+    else:
+        messagebox.showinfo(title, message)
+
 
 class Weapon:
     def __init__(self, name: str, stock: int, price: int):
@@ -9,12 +20,14 @@ class Weapon:
         self.stock = stock
         self.price = price
 
+
 class User:
     def __init__(self, email: str, password: str, role: str, gun_list: list = None):
         self.email = email
         self.password = password
         self.role = role
         self.gun_list = gun_list if gun_list is not None else []
+
 
 class FirearmsStorageUser:
     def __init__(self, user_objects: dict, weapons: list):
@@ -24,25 +37,27 @@ class FirearmsStorageUser:
     def display_info(self, email: str):
         user = self.user_objects.get(email)
         if user:
-            self.custom_messagebox("Selamat Datang", f"Selamat Datang, {user.email}!")
+            custom_messagebox("Selamat Datang", f"Selamat Datang, {user.email}!")
             self.display_gun_list(user)
         else:
-            self.custom_messagebox("Error", "User tidak ditemukan.", "error")
+            custom_messagebox("Error", "User tidak ditemukan.", "error")
 
     def display_gun_list(self, user: User):
         gun_list_str = "Persediaan:\n"
         for gun in user.gun_list:
             gun_list_str += f"- {gun.name}: {gun.stock}\n"
-        self.custom_messagebox("Persediaan", gun_list_str)
+        if not user.gun_list:
+            gun_list_str += "(Kosong)"
+        custom_messagebox("Persediaan", gun_list_str)
 
     def display_weapons_stock(self):
         if not self.weapons:
-            self.custom_messagebox("Stok Senjata", "Senjata Tidak Tersedia.")
+            custom_messagebox("Stok Senjata", "Senjata Tidak Tersedia.")
         else:
             stock_str = "Stok Senjata:\n"
             for weapon in self.weapons:
-                stock_str += f"- {weapon.name}: {weapon.stock}\n"
-            self.custom_messagebox("Stok Senjata", stock_str)
+                stock_str += f"- {weapon.name}: {weapon.stock} (Harga: {weapon.price:,} IDR)\n"
+            custom_messagebox("Stok Senjata", stock_str)
 
     def get_stock_by_name(self, weapon_name: str) -> int:
         for weapon in self.weapons:
@@ -53,20 +68,16 @@ class FirearmsStorageUser:
     def update_weapon_stock(self, weapon_name: str, quantity: int):
         weapon = next((weapon for weapon in self.weapons if weapon.name.lower() == weapon_name.lower()), None)
         if weapon is not None:
-            weapon.stock += quantity
-
-    def custom_messagebox(self, title: str, message: str, type: str = "info"):
-        root = tk.Tk()
-        root.withdraw()
-        style = ttk.Style()
-        style.configure("BW.TLabel", foreground="green", background="black", font=("Helvetica", 10))
-        if type == "info":
-            messagebox.showinfo(title, message)
-        elif type == "error":
-            messagebox.showerror(title, message)
+            new_stock = weapon.stock + quantity
+            if new_stock < 0:
+                custom_messagebox("Error", f"Stok {weapon.name} tidak bisa kurang dari 0.", "error")
+                return False
+            weapon.stock = new_stock
+            return True
         else:
-            messagebox.showinfo(title, message)
-        root.destroy()
+            custom_messagebox("Error", f"Senjata '{weapon_name}' tidak ditemukan.", "error")
+            return False
+
 
 class AdminGUI(tk.Toplevel):
     def __init__(self, master, firearms_storage_user: FirearmsStorageUser):
@@ -92,33 +103,50 @@ class AdminGUI(tk.Toplevel):
         self.exit_button.place(relx=0.5, rely=0.6, anchor=tk.CENTER)
 
     def _get_weapon_info(self, prompt: str) -> tuple:
-        weapon_name = tk.simpledialog.askstring(prompt, "Masukkan nama senjata:")
-        if weapon_name is not None:
-            weapon_stock = tk.simpledialog.askinteger(prompt, f"Masukkan jumlah stok {weapon_name}:")
-            if weapon_stock is not None:
-                weapon_price = tk.simpledialog.askinteger(prompt, f"Masukkan harga {weapon_name}:")
-                if weapon_price is not None:
-                    return weapon_name, weapon_stock, weapon_price
-        return None, None, None
+        weapon_name = simpledialog.askstring(prompt, "Masukkan nama senjata:", parent=self)
+        if weapon_name is None or weapon_name.strip() == "":
+            return None, None, None
+        weapon_name = weapon_name.strip()
+
+        weapon_stock = simpledialog.askinteger(prompt, f"Masukkan jumlah stok {weapon_name}:", parent=self)
+        if weapon_stock is None:
+            return None, None, None
+        if weapon_stock < 0:
+            custom_messagebox("Error", "Stok tidak boleh negatif.", "error")
+            return None, None, None
+
+        weapon_price = simpledialog.askinteger(prompt, f"Masukkan harga {weapon_name}:", parent=self)
+        if weapon_price is None:
+            return None, None, None
+        if weapon_price <= 0:
+            custom_messagebox("Error", "Harga harus lebih dari 0.", "error")
+            return None, None, None
+
+        return weapon_name, weapon_stock, weapon_price
 
     def add_weapon(self):
-        weapon_info = self._get_weapon_info("Tambah Senjata")
-        if weapon_info:
-            self.firearms_storage_user.weapons.append(Weapon(*weapon_info))
+        weapon_name, weapon_stock, weapon_price = self._get_weapon_info("Tambah Senjata")
+        if weapon_name is not None:
+            self.firearms_storage_user.weapons.append(Weapon(weapon_name, weapon_stock, weapon_price))
+            custom_messagebox("Sukses", f"Senjata '{weapon_name}' berhasil ditambahkan.")
 
     def delete_weapon(self):
-        weapon_name = tk.simpledialog.askstring("Hapus Senjata", "Masukkan nama senjata yang dihapus:")
+        weapon_name = simpledialog.askstring("Hapus Senjata", "Masukkan nama senjata yang dihapus:", parent=self)
         if weapon_name is not None:
-            weapon = next((weapon for weapon in self.firearms_storage_user.weapons if weapon.name.lower() == weapon_name.lower()), None)
+            weapon = next((weapon for weapon in self.firearms_storage_user.weapons if weapon.name.lower() == weapon_name.strip().lower()), None)
             if weapon is not None:
                 self.firearms_storage_user.weapons.remove(weapon)
+                custom_messagebox("Sukses", f"Senjata '{weapon.name}' berhasil dihapus.")
+            else:
+                custom_messagebox("Error", f"Senjata '{weapon_name}' tidak ditemukan.", "error")
 
     def update_weapon_stock(self):
-        weapon_name = tk.simpledialog.askstring("Perbarui Stok Senjata", "Masukkan nama senjata untuk diperbarui:")
+        weapon_name = simpledialog.askstring("Perbarui Stok Senjata", "Masukkan nama senjata untuk diperbarui:", parent=self)
         if weapon_name is not None:
-            update_quantity = tk.simpledialog.askinteger("Perbarui Stok Senjata", f"Masukkan Jumlah untuk ditambah atau dikurang dari {weapon_name} (contoh: -10 atau 50):")
+            update_quantity = simpledialog.askinteger("Perbarui Stok Senjata", f"Masukkan Jumlah untuk ditambah atau dikurang dari {weapon_name} (contoh: -10 atau 50):", parent=self)
             if update_quantity is not None:
-                self.firearms_storage_user.update_weapon_stock(weapon_name, update_quantity)
+                if self.firearms_storage_user.update_weapon_stock(weapon_name, update_quantity):
+                    custom_messagebox("Sukses", f"Stok '{weapon_name}' berhasil diperbarui.")
 
     def display_weapons_stock(self):
         self.firearms_storage_user.display_weapons_stock()
@@ -126,6 +154,7 @@ class AdminGUI(tk.Toplevel):
     def exit_to_login(self):
         self.destroy()
         self.master.deiconify()
+
 
 class MarketGUI(tk.Toplevel):
     def __init__(self, master, user: User, firearms_storage_user: FirearmsStorageUser):
@@ -137,6 +166,7 @@ class MarketGUI(tk.Toplevel):
         self.configure(bg='black')
 
         self.weapon_quantities = {}
+        self.weapon_labels = {}
 
         self.create_widgets()
 
@@ -163,30 +193,57 @@ class MarketGUI(tk.Toplevel):
         frame = tk.Frame(self.weapon_frame, bg='black')
         frame.pack(fill=tk.X, pady=5)
 
-        weapon_label = tk.Label(frame, text=f"{weapon.name} (Stok: {weapon.stock}, Harga: {weapon.price})", fg='green', bg='black', font=("Helvetica", 10))
+        weapon_label = tk.Label(frame, text=f"{weapon.name} (Stok: {weapon.stock}, Harga: {weapon.price:,} IDR)", fg='green', bg='black', font=("Helvetica", 10))
         weapon_label.pack(side=tk.LEFT, padx=5)
+        self.weapon_labels[weapon.name] = weapon_label
 
         quantity_var = IntVar()
         self.weapon_quantities[weapon.name] = quantity_var
         quantity_entry = tk.Entry(frame, textvariable=quantity_var, width=5, font=("Helvetica", 10), fg='green', bg='black')
         quantity_entry.pack(side=tk.RIGHT, padx=5)
 
+    def refresh_weapon_labels(self):
+        """Update all weapon labels to reflect current stock values."""
+        for weapon in self.firearms_storage_user.weapons:
+            if weapon.name in self.weapon_labels:
+                self.weapon_labels[weapon.name].config(
+                    text=f"{weapon.name} (Stok: {weapon.stock}, Harga: {weapon.price:,} IDR)"
+                )
+
     def book(self):
         order_details = "Nota:\n"
         total_cost = 0
+        has_items = False
+
         for weapon_name, quantity_var in self.weapon_quantities.items():
             quantity = quantity_var.get()
+            if quantity < 0:
+                custom_messagebox("Error", f"Jumlah untuk {weapon_name} tidak boleh negatif.", "error")
+                return
             if quantity > 0:
+                has_items = True
                 weapon = next((w for w in self.firearms_storage_user.weapons if w.name == weapon_name), None)
                 if weapon and weapon.stock >= quantity:
                     weapon.stock -= quantity
                     order_details += f"{weapon.name}: {quantity}\n"
                     total_cost += quantity * weapon.price
                 else:
-                    self.custom_messagebox("Error", f"Stok tidak cukup untuk {weapon_name}.", "error")
+                    custom_messagebox("Error", f"Stok tidak cukup untuk {weapon_name}.", "error")
                     return
-        order_details += f"\nTotal Biaya: {total_cost} IDR"
+
+        if not has_items:
+            custom_messagebox("Error", "Anda belum memilih senjata apapun.", "error")
+            return
+
+        order_details += f"\nTotal Biaya: {total_cost:,} IDR"
         order_details += "\nHubungi nomor telepon berikut untuk konfirmasi: 081234567890"
+
+        # Refresh labels to show updated stock
+        self.refresh_weapon_labels()
+
+        # Reset quantity fields
+        for quantity_var in self.weapon_quantities.values():
+            quantity_var.set(0)
 
         receipt_window = tk.Toplevel(self)
         receipt_window.title("Nota")
@@ -210,22 +267,10 @@ class MarketGUI(tk.Toplevel):
         y = (screen_height/2) - (height/2)
         window.geometry(f'{width}x{height}+{int(x)}+{int(y)}')
 
-    def custom_messagebox(self, title: str, message: str, type: str = "info"):
-        root = tk.Tk()
-        root.withdraw()
-        style = ttk.Style()
-        style.configure("BW.TLabel", foreground="green", background="black", font=("Helvetica", 10))
-        if type == "info":
-            messagebox.showinfo(title, message)
-        elif type == "error":
-            messagebox.showerror(title, message)
-        else:
-            messagebox.showinfo(title, message)
-        root.destroy()
-
     def exit_to_login(self):
         self.destroy()
         self.master.deiconify()
+
 
 class GUI(tk.Tk):
     def __init__(self):
@@ -274,13 +319,25 @@ class GUI(tk.Tk):
             Weapon("FN Scar 17S", 200, 260000000)
         ]
 
-        pygame.init()
-        pygame.mixer.music.load("pump up kicks.mp3")
-        pygame.mixer.music.play(-1)
+        # Use absolute path relative to script location for music file
+        try:
+            pygame.init()
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            music_path = os.path.join(script_dir, "pump up kicks.mp3")
+            if os.path.exists(music_path):
+                pygame.mixer.music.load(music_path)
+                pygame.mixer.music.play(-1)
+            else:
+                print(f"Warning: Music file not found at {music_path}")
+        except Exception as e:
+            print(f"Warning: Could not initialize music: {e}")
 
     def login(self):
-        email = self.email_entry.get()
+        email = self.email_entry.get().strip()
         password = self.password_entry.get()
+        if not email or not password:
+            custom_messagebox("Error", "Email dan password harus diisi.", "error")
+            return
         user = self.validate_login(email, password)
         if user:
             self.firearms_storage_user = FirearmsStorageUser(self.create_user_objects(), self.weapons)
@@ -291,32 +348,20 @@ class GUI(tk.Tk):
                 self.withdraw()
                 MarketGUI(self, user, self.firearms_storage_user)
         else:
-            self.custom_messagebox("Error", "Email atau password salah, silakan coba lagi.", "error")
+            custom_messagebox("Error", "Email atau password salah, silakan coba lagi.", "error")
 
     def validate_login(self, email: str, password: str) -> User:
         for user in self.user_data:
             if user["email"] == email and user["password"] == password:
-                return User(user["email"], user["password"], user["role"], [weapon for weapon in self.weapons if user["email"] in weapon.name])
+                return User(user["email"], user["password"], user["role"], list(self.weapons))
         return None
 
     def create_user_objects(self) -> dict:
         user_objects = {}
         for user in self.user_data:
-            user_objects[user["email"]] = User(user["email"], user["password"], user["role"], [weapon for weapon in self.weapons if user["email"] in weapon.name])
+            user_objects[user["email"]] = User(user["email"], user["password"], user["role"], list(self.weapons))
         return user_objects
 
-    def custom_messagebox(self, title: str, message: str, type: str = "info"):
-        root = tk.Tk()
-        root.withdraw()
-        style = ttk.Style()
-        style.configure("BW.TLabel", foreground="green", background="black", font=("Helvetica", 10))
-        if type == "info":
-            messagebox.showinfo(title, message)
-        elif type == "error":
-            messagebox.showerror(title, message)
-        else:
-            messagebox.showinfo(title, message)
-        root.destroy()
 
 if __name__ == "__main__":
     app = GUI()
